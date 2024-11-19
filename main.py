@@ -14,7 +14,8 @@ import pickle
 
 torch_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-model_name = 'sentence-transformers/paraphrase-multilingual-mpnet-base-v2'
+model_name = 'ricardo-filho/bert-base-portuguese-cased-nli-assin-2'
+#model_name = 'sentence-transformers/paraphrase-xlm-r-multilingual-v1'
 embeddings = HuggingFaceEmbeddings(model_name=model_name)
 
 

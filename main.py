@@ -1,4 +1,5 @@
 import pymupdf
+from pathlib import Path
 from docx import Document # pip install python-docx
 from langchain.docstore.document import Document as Document_langchain
 from langchain.text_splitter import RecursiveCharacterTextSplitter    
@@ -18,9 +19,6 @@ model_name = 'ricardo-filho/bert-base-portuguese-cased-nli-assin-2'
 #model_name = 'sentence-transformers/paraphrase-xlm-r-multilingual-v1'
 embeddings = HuggingFaceEmbeddings(model_name=model_name)
 
-
-
-
 def extract_text_from_pdf(pdf_path):
     text = ''
     pdf = pymupdf.open(pdf_path)
@@ -37,17 +35,18 @@ def extract_text_from_docx(docx_path):
     return text 
 
 def get_document_path(directory):
-    pdf_paths = glob.glob(directory + '/*.pdf') 
-    docx_paths = glob.glob(directory + '/*.docx')
+    directory = Path(directory).resolve()
+    pdf_paths = list(directory.glob("*.pdf"))
+    docx_paths = list(directory.glob("*.docx"))
     return pdf_paths + docx_paths
 
 def process_documents(directory):
     document_paths = get_document_path(directory)
     documents=[]
     for document_path in document_paths:
-        if document_path.endswith('.pdf'):
+        if document_path.suffix == '.pdf':
             text = extract_text_from_pdf(document_path)
-        elif document_path.endswith('.docx'):
+        elif document_path.suffix == '.docx':
             text = extract_text_from_docx(document_path)
         else:
             continue
@@ -56,7 +55,7 @@ def process_documents(directory):
     return documents
 
 def create_embedding(documents):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
     docs_list=[]
     for doc in documents:
         splits = text_splitter.split_text(doc.page_content)
@@ -92,11 +91,24 @@ def search_documents(query, vectorstore, k=5):
         list: Resultados filtrados por similaridade.
     """
     # Realiza a busca no vectorstore
-    results = vectorstore.similarity_search(query, k=k)
+    results = vectorstore.similarity_search(query, k=k*2)
     
+    # Agrupando documentos por 'source'
+    results = remove_duplicate_sources(results)
     # Retorna apenas os documentos que atendem ao limiar
-    return results
+    return results[:k]
 
+def remove_duplicate_sources(results):
+    """Remove documentos com fontes duplicadas da lista de resultados."""
+    unique_sources = set()
+    unique_results = []
+    for res in results:
+        source = res.metadata['source']
+        if source not in unique_sources:
+            unique_sources.add(source)
+            unique_results.append(res)
+            
+    return unique_results
 def main():
     documents_directory = "documentos"
     vectorstore_path = "vectorstore.pkl"

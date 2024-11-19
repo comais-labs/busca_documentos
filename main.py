@@ -1,8 +1,10 @@
 import pymupdf
-from docx import Document
+from docx import Document # pip install python-docx
 from langchain.docstore.document import Document as Document_langchain
 from langchain.text_splitter import RecursiveCharacterTextSplitter    
 from langchain_community.vectorstores.faiss import FAISS
+from langchain_community.docstore.in_memory import InMemoryDocstore
+import faiss
 from langchain_huggingface import HuggingFaceEmbeddings
 import streamlit as st
 import glob
@@ -60,11 +62,38 @@ def create_embedding(documents):
         for split in splits:
             new_doc  = Document_langchain(page_content=split, metadata={'source':doc.metadata['source']})
             docs_list.append(new_doc)
+    
     vectorstore  = FAISS.from_documents(docs_list, embeddings)
+    import faiss
+
+    index = faiss.IndexFlatL2(len(embeddings.embed_query("Olá Mundo!")))
+
+    vectorstore = FAISS(
+        embedding_function=embeddings,
+        index=index,
+        docstore=InMemoryDocstore(),
+        index_to_docstore_id={},
+        )
+    vectorstore.add_documents(docs_list)
     return vectorstore
     
 def search_documents(query, vectorstore, k=5):
-    results = vectorstore.similarity_search(query, k=5)
+    """
+    Busca documentos que correspondem à consulta, com base em um limiar de similaridade.
+
+    Args:
+        query (str): A consulta de busca.
+        vectorstore: O armazenamento de vetores FAISS.
+        k (int): Número máximo de resultados a retornar.
+        similarity_threshold (float): Limiar mínimo de similaridade (0.0 a 1.0).
+
+    Returns:
+        list: Resultados filtrados por similaridade.
+    """
+    # Realiza a busca no vectorstore
+    results = vectorstore.similarity_search(query, k=k)
+    
+    # Retorna apenas os documentos que atendem ao limiar
     return results
 
 def main():
@@ -72,13 +101,13 @@ def main():
     vectorstore_path = "vectorstore.pkl"
     st.title("Sistema de busca de arquivos")
     st.write("Este sistema permite que você faça buscas em arquivos PDF e DOCX")
-    st.button('Atualizar embedding...')
-    with st.spinner('Processando...'):
-        documents = process_documents(documents_directory)
-        vectorstore = create_embedding(documents)
-        with open(vectorstore_path, 'wb') as f:
-            pickle.dump(vectorstore, f)
-        st.success('Embedding atualizado com sucesso!')
+    if st.button('Atualizar embedding...'):
+        with st.spinner('Processando...'):
+            documents = process_documents(documents_directory)
+            vectorstore = create_embedding(documents)
+            with open(vectorstore_path, 'wb') as f:
+                pickle.dump(vectorstore, f)
+            st.success('Embedding atualizado com sucesso!')
     if os.path.exists(vectorstore_path):
         with st.spinner('Carregando embedding...'):
             with open(vectorstore_path, 'rb') as f:
@@ -92,12 +121,13 @@ def main():
             results = search_documents(query, vectorstore)
         st.write('Documentos encontrados:') 
         if results:
-            for res in results:
+            for i, res in enumerate(results):
                 file_path = res.metadata['source']
                 st.write(f"Aquivo : {os.path.basename(file_path)}")
                 with open(file_path, 'rb') as f:
                     file_data = f.read()
                 st.download_button(
+                    key= i,
                     label="Download",
                     data=file_data,
                     file_name=os.path.basename(file_path),
